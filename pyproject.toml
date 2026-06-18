@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recon6"
+version = "0.3.0"
+description = "Python port of RECON5 - TAE (Transferable Atom Equivalent) molecular descriptor calculator. RECON6 adds hydrogen addition for H-less SDF/MOL2/PDB input, PDB/Gaussian/ORCA readers, distance-based connectivity with bond-order inference, robust CSV output with response-data alignment, and several correctness fixes."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "See LICENSE"}
+authors = [
+    {name = "Translated from original Fortran RECON5 by Sukumar & Breneman"},
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
+
+[project.scripts]
+recon6 = "recon6.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["recon6*"]
