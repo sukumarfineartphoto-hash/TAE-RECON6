@@ -42,10 +42,10 @@ library is sufficient.
 
 ## Usage
 ### Command line (recommended)
-```bash
+```bash (or Windows Terminal)
 python -m recon6 --data-dir /path/to/DATA molecule.sdf -o results.csv
 ```
-```bash
+```bash (or Windows Terminal)
 python -m recon6 --data-dir /path/to/DATA --fmt smiles smiles_list.txt -o results.csv
 ```
 The bond-length table is read automatically from `<data-dir>/bond`;
