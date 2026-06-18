@@ -5,16 +5,16 @@ Transferable Atom Equivalent Reconstruction (TAE-RECON) is a computational chemi
 The core of the algorithm is the Atomtyper and TAE descriptor pipeline: reading a molecule, classifying each atom into a 49-character alphanumeric code, matching that code against the TAE database, and combining the matched atomic descriptors into whole-molecule descriptors. This release includes several features not present in earlier versions, and has been prepared with the help of Claude (Sonnet 4.6)
 
 # How TAE-RECON Works
-• Fragment-Based: It uses Bader’s Quantum Theory of Atoms in Molecules (AIM) to create a library of atomic charge density fragments, whose properties are computed at quantum mechanical accuracy.
-• Reconstruction: When given a large molecule, or a large database of molecules, the RECON program matches atom types, retrieves the appropriate precomputed density fragments and stitches them together to reconstruct the molecular electron density and molecular properties.
-• Efficiency: It calculates physical properties (like electrostatic potentials, local average ionization energies, Fukui functions, electron density Laplacians, etc) for tens of thousands of molecules in seconds.
+- Fragment-Based: It uses Bader’s Quantum Theory of Atoms in Molecules (AIM) to create a library of atomic charge density fragments, whose properties are computed at quantum mechanical accuracy.
+- Reconstruction: When given a large molecule, or a large database of molecules, the RECON program matches atom types, retrieves the appropriate precomputed density fragments and stitches them together to reconstruct the molecular electron density and molecular properties.
+- Efficiency: It calculates physical properties (like electrostatic potentials, local average ionization energies, Fukui functions, electron density Laplacians, etc) for tens of thousands of molecules in seconds.
 Key Applications
-• QSAR/QSPR Modeling: TAE-RECON has been used extensively in drug and materials discovery and toxicology to build highly predictive models for molecular properties, and for protein separations.
-• Database Mining: Rapidly screens large chemical databases or virtual compounds for promising drug candidates.
+- QSAR/QSPR Modeling: TAE-RECON has been used extensively in drug and materials discovery and toxicology to build highly predictive models for molecular properties, and for protein separations.
+- Database Mining: Rapidly screens large chemical databases or virtual compounds for promising drug candidates.
 
 # Key Applications
-• QSAR/QSPR Modeling: TAE-RECON has been used extensively in drug and materials discovery and toxicology to build highly predictive models for molecular properties, and for protein separations.
-• Database Mining: Rapidly screens large chemical databases or virtual compounds for promising drug candidates.
+- QSAR/QSPR Modeling: TAE-RECON has been used extensively in drug and materials discovery and toxicology to build highly predictive models for molecular properties, and for protein separations.
+- Database Mining: Rapidly screens large chemical databases or virtual compounds for promising drug candidates.
 
 ## Supported input formats
 - SDF (MDL molfile, V2000)
