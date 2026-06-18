@@ -1,16 +1,16 @@
 # TAE-RECON6
 Transferable Atom Equivalent Reconstruction (TAE-RECON) rapidly generates quantum-chemistry-derived molecular descriptors assembled from a pre-computed Transferable Atom Equivalent database of atomic electron-density fragments, skipping time-consuming ab initio calculations, without running a new quantum calculation for each molecule.
+
 This is a Python translation and upgrade of RECON5-5, a Fortran program (©Sukumar & Breneman, 2001) that computes TAE (Transferable Atom Equivalent) molecular descriptors — quantum-chemistry-derived property descriptors assembled from a precomputed atom-type database, without running a new quantum calculation for each molecule.
+
 Transferable Atom Equivalent Reconstruction (TAE-RECON) is a computational chemistry method that rapidly generates highly accurate quantum mechanical molecular descriptors. Originally developed by the late Prof. Curt Breneman's group at RPI, it drastically accelerates molecular modeling by assembling pre-computed atomic electron-density fragments, skipping time-consuming ab initio calculations.
+
 The core of the algorithm is the Atomtyper and TAE descriptor pipeline: reading a molecule, classifying each atom into a 49-character alphanumeric code, matching that code against the TAE database, and combining the matched atomic descriptors into whole-molecule descriptors. This release includes several features not present in earlier versions, and has been prepared with the help of Claude (Sonnet 4.6)
 
 # How TAE-RECON Works
 - Fragment-Based: It uses Bader’s Quantum Theory of Atoms in Molecules (AIM) to create a library of atomic charge density fragments, whose properties are computed at quantum mechanical accuracy.
 - Reconstruction: When given a large molecule, or a large database of molecules, the RECON program matches atom types, retrieves the appropriate precomputed density fragments and stitches them together to reconstruct the molecular electron density and molecular properties.
 - Efficiency: It calculates physical properties (like electrostatic potentials, local average ionization energies, Fukui functions, electron density Laplacians, etc) for tens of thousands of molecules in seconds.
-Key Applications
-- QSAR/QSPR Modeling: TAE-RECON has been used extensively in drug and materials discovery and toxicology to build highly predictive models for molecular properties, and for protein separations.
-- Database Mining: Rapidly screens large chemical databases or virtual compounds for promising drug candidates.
 
 # Key Applications
 - QSAR/QSPR Modeling: TAE-RECON has been used extensively in drug and materials discovery and toxicology to build highly predictive models for molecular properties, and for protein separations.
@@ -105,6 +105,7 @@ Many real workflows attach a modeled response (e.g. an assay result)
 or other metadata to each SDF molecule as an `> <TAG>` data field, and
 need that data lined up with RECON's computed descriptors afterward
 for machine learning.
+
 This release extracts `> <TAG>` fields directly while reading the
 SDF (`readers/sdf.py`, see the `data_fields` dict on each parsed
 molecule) and carries them through alongside each molecule's
@@ -118,6 +119,7 @@ molecule's SDF block rather than matched up afterward by name, the
 response/property columns can never become misaligned with the
 molecule they belong to, regardless of which molecules earlier in the
 file were skipped.
+
 This is on by default (`ReconConfig.include_data_fields=True`, CLI
 `--no-data-fields` to disable). The extra columns appear after the
 descriptor columns, named after their SDF tag (e.g. `LIC50`, `EXTREG`).
@@ -197,6 +199,7 @@ three independent test sets:
 Tolerances of <0.05% reflect ordinary floating-point/formatting
 differences (the Fortran reference output is truncated to ~5-6
 significant figures in its text format).
+
 Additional validation beyond the table above: the MOL2 reader was
 checked against a 278-molecule MOL2 conversion of the same toxx
 compound set (reordered relative to the SDF version, so validated by
@@ -210,6 +213,7 @@ inference was in place. The Gaussian and ORCA readers were
 cross-checked against each other (identical methane input via both
 formats produces identical descriptors) and against the same
 bond-order-inference logic validated for PDB.
+
 The package has also been run successfully (no crashes) on much
 larger external datasets, including a 51,449-molecule SDF batch and
 several other independent SDF datasets supplied during development.
@@ -224,6 +228,7 @@ SMILES containing:
 - Bracket atoms, e.g. `[C@H]`, `[N+]`, `[O-]`
 - Bond-direction markers `/` and `\`
 - A leading `(` before the first atom
+
 A small number of SMILES with reused ring-closure digits in deeply
 branched systems may also diverge from the Fortran reference; this
 affects roughly 4 of 94 parseable molecules in the validation set and
