@@ -193,6 +193,7 @@ three independent test sets:
 | GAC_withH.sdf              | 974       | SDF    | Despite the filename, 971/974 of these molecules have **zero** explicit hydrogens in the source file, so the Fortran reference for those rows reflects its H-less, unsaturated behavior - not a meaningful comparison now that this release adds missing H's. The 3 molecules that genuinely had explicit H's match the Fortran reference to <0.05%; H-addition for the other 971 is validated by formula consistency (added H count matches each molecule's formula) instead. 3 further molecules are excluded for an unrelated, pre-existing input defect (disconnected halogen atoms) - see Known limitations. |
 | toxx2.sdf                  | 278       | SDF    | 278/278 match to <0.05% (this file is properly H-saturated already) |
 | Benzoxazines.txt           | 106 lines | SMILES | 94 lines use syntax supported by the original `rsmiles.f`; of those, 90+ match Fortran energies exactly |
+
 Tolerances of <0.05% reflect ordinary floating-point/formatting
 differences (the Fortran reference output is truncated to ~5-6
 significant figures in its text format).
