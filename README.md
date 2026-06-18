@@ -41,7 +41,7 @@ Requires Python 3.8+. No third-party dependencies — the standard
 library is sufficient.
 
 ## Usage
-### Command line
+### Command line (recommended)
 ```bash
 python -m recon6 --data-dir /path/to/DATA molecule.sdf -o results.csv
 ```
