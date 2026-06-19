@@ -48,6 +48,11 @@ python -m recon6 --data-dir /path/to/DATA molecule.sdf -o results.csv
 ```bash (or Windows Terminal)
 python -m recon6 --data-dir /path/to/DATA --fmt smiles smiles_list.txt -o results.csv
 ```
+# Other optional flags:
+ --gnn-output	# Outputs atom, bond and graph attributes for a Graph Neural Network;
+ --no-return	# Writes output a single molecule at a time (useful for large databases);
+ --log-file	# Produces silent run and logs messages instead (useful for large databases)
+
 The bond-length table is read automatically from `<data-dir>/bond`;
 pass `--bond-file` only if you need to override that location.
 Run `python -m recon6 --help` for all options.
