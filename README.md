@@ -67,8 +67,13 @@ config = ReconConfig(
     input_files=["molecule.sdf"],
     fmt="sdf",                      # or "mol2", "pdb", "gaussian", "orca", "smiles", "auto"
     output_csv="results.csv",       # optional
+    output_gnn="molecules.jsonl",   # optional GNN export (JSONL or directory of .json files)
+    error_log="recon.err",          # optional atom-typing quality report (CSV)
     # bond_file defaults to '<data_dir>/bond'; pass an explicit path
     # here only if your bond-length table lives somewhere else.
+    return_results=True,            # set False for large batches (returns [] but still
+                                    # stream-writes CSV/GNN/error output with bounded memory)
+    log_file=None,                  # set to a path to redirect all notes/warnings to file
 )
 results = run_recon(config)
 
@@ -79,6 +84,161 @@ Each entry in `results` is a dict of descriptor name -> value (Energy,
 Population, VOLTAE, SurfArea, SIK, SIG, SIEP, Fuk, Lapl, chi, and the
 associated min/max/bin-fraction variants). The default CLI output
 filename is `recon.csv`.
+
+## Large-batch usage (memory and performance)
+
+By default `run_recon` accumulates all results in a Python list and
+writes the CSV only after every molecule has been processed, which can
+exhaust memory on large datasets (observed: ~9.5 GB for 51k molecules)
+and produces no output until the very end. Two config flags change
+this:
+
+- **`return_results=False`** — disables in-memory accumulation entirely.
+  `run_recon` returns `[]` but the CSV and/or GNN output are
+  stream-written (flushed to disk after each molecule), so output
+  appears incrementally and peak memory is bounded to roughly one
+  molecule at a time.
+- **`log_file="run.log"`** — redirects all notes, TAE warnings, and
+  per-molecule progress output from stderr to a file for the duration
+  of the run. Useful for unattended or overnight batch jobs where
+  stderr would otherwise go unread.
+
+```bash
+# Recommended invocation for datasets >10k molecules
+python -m recon6 --data-dir /path/to/DATA --no-return --log-file run.log \
+    large_dataset.sdf -o results.csv
+```
+
+The CSV header is written immediately when the output file is opened
+(not after the first molecule), so the file is always well-formed even
+if the run is interrupted.
+
+## Atom-typing quality report (`--error-log`)
+
+The TAE database covers a finite set of chemical environments. When an
+atom's computed 49-character type code doesn't match anything in the
+database exactly, `gettae` falls back to the closest available entry at
+a lower match level. RECON6 fully
+implements this as a structured, streaming CSV report.
+
+Set `ReconConfig(error_log="recon.err")` or pass `--error-log recon.err`
+on the CLI to get one row per atom with an imperfect match, with columns:
+
+| Column | Content |
+|---|---|
+| `Molecule` | molecule name/ID |
+| `AtomIndex` | 1-based atom index within the molecule |
+| `Element` | element symbol |
+| `AtomTypeCode` | the 49-character atom-type code computed by RECON |
+| `MatchLevel` | integer match quality from `gettae` (see below) |
+| `BestTAEEntry` | the closest matching TAE database entry name |
+| `MatchQuality` | human-readable label for easy filtering |
+
+**MatchLevel / MatchQuality values:**
+
+| MatchLevel | MatchQuality | Meaning |
+|---|---|---|
+| 3 | *(not logged)* | Perfect match — all fields agree |
+| 2 | `near` | Near match — last 2 characters differ |
+| 1 | `good` | Good match — last 6 characters differ |
+| 0 | `partial` | Partial match — only element + ring type matched |
+| -1 | `poor` | Poor match — only element matched |
+| -2 | `very_poor` | Very poor match — only first character matched |
+| -3 | `no_match` | No usable match — fallback entry used |
+
+Only atoms with MatchLevel < 3 appear in the file. A completion summary
+is printed to stderr (or `--log-file`) giving the total atom and molecule
+counts with imperfect matches. The file is flushed after each molecule,
+so it's readable during long runs.
+
+**Why this matters for ML:** descriptors derived from a poor or no-match
+atom are computed from a structurally dissimilar reference atom type,
+making them unreliable. For a dataset where many atoms fall below
+MatchLevel 2, the resulting descriptors may not faithfully represent the
+chemistry, and any ML model built on them will have an additional source
+of noise or bias. Use this report to identify structural classes that are
+under-represented in the TAE database before committing to a modelling
+effort.
+
+```bash
+# Recommended for any ML-focused run
+python -m recon6 --data-dir /path/to/DATA molecules.sdf \
+    -o results.csv --error-log recon.err
+```
+
+On the 278-molecule toxx test dataset: 71 atoms in 39 molecules had
+imperfect matches (mostly quaternary/tert-butyl carbons at MatchLevel 0
+`partial`, and 5-membered-ring atoms at MatchLevel 2 `near`) — exactly
+the structural classes where the TAE database is known to be sparse.
+
+## GNN export
+
+`output_gnn` (library) / `--gnn-output` (CLI) exports the per-atom and
+per-bond QMF data in a format directly usable by graph neural network
+pipelines, alongside the whole-molecule descriptor CSV.
+
+### Output format
+
+Each exported molecule is a JSON object with four keys:
+
+```json
+{
+  "molecule_id": "3-hydroxybenzaldehyde",
+  "atoms": [
+    {
+      "Atom": "C", "x": 1.391, "y": 0.0, "z": 0.0, "AtNum": 6,
+      "Energy": -37.69, "Population": 6.12, "SurfArea": 14.3,
+      "SIDel(Rho)N": 0.041, "EP1": -0.02,
+      "... 162 more per-atom TAE descriptor fields ..."
+    },
+    "... one entry per atom ..."
+  ],
+  "bonds": [
+    {"source": 0, "dest": 1, "bond_order": 2},
+    {"source": 1, "dest": 0, "bond_order": 2},
+    "... two directed entries per bond (i->j and j->i) ..."
+  ],
+  "molecule_descriptors": {
+    "Molecule": "3-hydroxybenzaldehyde",
+    "Energy": -382.36, "Population": 56.1, "chi": 2.31,
+    "... full 249-column whole-molecule TAE descriptor set ..."
+  }
+}
+```
+
+The 167 per-atom descriptor field names (`NODE_FEATURE_COLS` in
+`recon6/gnn_export.py`) match the canonical column names from the
+Fortran QMF output format exactly, verified against real QMF files.
+Atom indices in the bond list are **0-based**, following the GNN
+convention.
+
+### JSONL vs per-molecule JSON
+
+Path ending in `.jsonl` (recommended for any batch run):
+: One JSON object per line, flushed after each molecule. Readable
+  line-by-line without loading the whole file. Safe to resume a
+  partial run (append mode).
+
+Any other path (treated as a directory):
+: One `<molecule_id>.json` file per molecule, written into the
+  directory.
+
+### PyTorch Geometric helper
+
+```python
+from recon6.gnn_export import mol_to_gnn_dict, to_pyg_data
+
+# mol and desc come from run_recon internals or your own pipeline
+gnn_dict = mol_to_gnn_dict(mol, desc)
+data = to_pyg_data(gnn_dict)  # returns torch_geometric.data.Data
+# data.x          -> node feature matrix [num_atoms, 167]
+# data.edge_index -> [2, 2*num_bonds]
+# data.edge_attr  -> bond orders [2*num_bonds, 1]
+# data.pos        -> 3-D coordinates [num_atoms, 3]
+```
+
+PyTorch and PyTorch Geometric must be installed separately —
+RECON6 itself does not depend on either.
 
 ### Distance-based connectivity and bond-order inference
 PDB, Gaussian, and ORCA input share a common connectivity module
@@ -153,6 +313,7 @@ recon6/
     sparse.py         Sparse bond-order matrix (memory optimization)
     connectivity.py   Shared distance-based connectivity + bond-order inference (PDB, Gaussian, ORCA)
     hydrogenate.py    Standard-valence H-addition for H-less SDF/MOL2/PDB input
+    gnn_export.py     GNN export: mol_to_gnn_dict, GnnJsonlWriter, write_mol_json, to_pyg_data
     recon.py          Orchestrator: ReconConfig, run_recon
     __main__.py       CLI entry point
     readers/
@@ -163,6 +324,7 @@ recon6/
         orca.py       ORCA input reader (Cartesian '* xyz' block only)
         smiles.py     Simplified SMILES parser
 tests/
+    test_config.py                 Shared path config (env-var overridable for portability)
     test_readers.py            Unit tests for readers, ele, periodic
     test_ringid.py              Ring detection unit tests
     test_hydrogenate.py          H-addition geometry and formula-consistency tests
@@ -170,6 +332,8 @@ tests/
     test_gaussian_reader.py       Gaussian .com/.gjf parsing tests
     test_orca_reader.py            ORCA '* xyz' block parsing tests
     test_data_fields.py           SDF data-field extraction, CSV quoting, alignment tests
+    test_streaming.py              Streaming CSV, return_results=False, log-file redirect, error log
+    test_gnn_export.py             GNN export schema, JSONL/JSON writers, PyG helper
     test_integration.py         974-molecule SDF batch vs. Fortran reference
     test_integration_toxx.py    278-molecule SDF batch vs. Fortran reference
     test_integration_smiles.py  106-line SMILES batch vs. Fortran reference
@@ -223,6 +387,9 @@ bond-order-inference logic validated for PDB.
 The package has also been run successfully (no crashes) on much
 larger external datasets, including a 51,449-molecule SDF batch and
 several other independent SDF datasets supplied during development.
+
+**Total: 151 tests, all passing** (116 core pipeline + 14 streaming/
+memory/log-file/error-log + 21 GNN export).
 
 ## Known limitations
 **SMILES parser.** The original `rsmiles.f` is a minimal SMILES reader
