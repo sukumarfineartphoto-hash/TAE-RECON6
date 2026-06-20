@@ -44,6 +44,13 @@ class ReconConfig:
                                   # large batches to keep memory bounded (returns [])
     log_file: Optional[str] = None  # redirect all notes/warnings/progress to this file
                                      # instead of stderr; useful for unattended large runs
+    error_log: Optional[str] = None  # write atom-typing quality report here (CSV format);
+                                      # one row per atom with lev < 3 (imperfect TAE match),
+                                      # plus a per-molecule summary row for molecules with
+                                      # any lev <= -1 (no usable match). Default None = no
+                                      # error log (poor matches are silently used). Strongly
+                                      # recommended for any dataset being used for ML model
+                                      # development, to assess descriptor reliability.
 
     def resolved_bond_file(self):
         """Return the bond-length table path: the explicit bond_file if
@@ -171,9 +178,95 @@ class _CsvStreamWriter:
         self.close()
 
 
-# ---------------------------------------------------------------------------
-# Molecule iteration helpers
-# ---------------------------------------------------------------------------
+class _ErrorLogWriter:
+    """Writes atom-typing quality issues to a CSV error log.
+
+    Format (one row per imperfect atom, plus one per molecule with any
+    no-match atoms):
+
+    Molecule, AtomIndex, Element, AtomTypeCode, MatchLevel, BestTAEEntry,
+    MatchQuality
+
+    MatchLevel meanings (from gettae):
+      3  = perfect match (all fields)
+      2  = near match (missing last 2 chars)
+      1  = good match (missing last 6 chars)
+      0  = partial match (element + ring type only)
+     -1  = poor match (element type only)
+     -2  = very poor match (first char only)
+     -3  = no match (default/fallback entry used)
+
+    MatchQuality is a human-readable label for easy filtering:
+      "perfect"     -> lev == 3 (not written; only lev < 3 rows are logged)
+      "near"        -> lev == 2
+      "good"        -> lev == 1
+      "partial"     -> lev == 0
+      "poor"        -> lev == -1
+      "very_poor"   -> lev == -2
+      "no_match"    -> lev == -3
+
+    Rows are written immediately (flushed after each molecule) so the
+    file is readable before the run completes.
+    """
+
+    _QUALITY = {
+        2: 'near', 1: 'good', 0: 'partial',
+        -1: 'poor', -2: 'very_poor', -3: 'no_match',
+    }
+
+    _FIELDNAMES = ['Molecule', 'AtomIndex', 'Element', 'AtomTypeCode',
+                   'MatchLevel', 'BestTAEEntry', 'MatchQuality']
+
+    def __init__(self, path):
+        self.path = path
+        self._fh = open(path, 'w', newline='')
+        self._writer = csv.DictWriter(self._fh, fieldnames=self._FIELDNAMES)
+        self._writer.writeheader()
+        self._fh.flush()
+        self.n_molecules_with_issues = 0
+        self.n_atoms_with_issues = 0
+
+    def write_molecule(self, mol_name, natom, atom, nuc, lev,
+                       modtype, atomtype_list):
+        """Write one row per atom with lev < 3 for this molecule."""
+        n_issues = 0
+        for i in range(1, natom + 1):
+            lvl = lev[i] if lev and i < len(lev) else -3
+            if lvl >= 3:
+                continue          # perfect match — nothing to report
+            elem = (atom[i] or '?').strip() if atom else '?'
+            code = (modtype[i] or '').strip() if modtype else ''
+            best = (atomtype_list[i] or '').replace('.dat', '') \
+                if atomtype_list else ''
+            quality = self._QUALITY.get(lvl, 'unknown')
+            self._writer.writerow({
+                'Molecule':     mol_name,
+                'AtomIndex':    i,
+                'Element':      elem,
+                'AtomTypeCode': code,
+                'MatchLevel':   lvl,
+                'BestTAEEntry': best,
+                'MatchQuality': quality,
+            })
+            n_issues += 1
+        if n_issues:
+            self._fh.flush()
+            self.n_molecules_with_issues += 1
+            self.n_atoms_with_issues += n_issues
+        return n_issues
+
+    def close(self):
+        if not self._fh.closed:
+            self._fh.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+
+
 
 def _iter_molecules(src, fmt, config=None):
     """Yield (mol_or_none, position) pairs one at a time from src."""
@@ -306,6 +399,10 @@ def run_recon(config: ReconConfig):
                 # write_mol_json per molecule in the loop below
                 gnn_writer = config.output_gnn
 
+        err_writer = None
+        if config.error_log:
+            err_writer = _ErrorLogWriter(config.error_log)
+
         try:
             for src in config.input_files:
                 fmt = (config.fmt if config.fmt != 'auto'
@@ -384,6 +481,21 @@ def run_recon(config: ReconConfig):
                                 write_mol_json(mol, result, gnn_writer)
                             else:
                                 gnn_writer.write(mol, result)
+                        if err_writer is not None:
+                            n_issues = err_writer.write_molecule(
+                                result['Molecule'],
+                                result['_natom'],
+                                mol['atom'],
+                                mol['nuc'],
+                                result.get('_lev'),
+                                result.get('_modtype'),
+                                result.get('_atomtype_list'),
+                            )
+                            if n_issues and config.iprint > 0:
+                                print("  [%d atom(s) with imperfect TAE "
+                                      "match logged to %s]" % (
+                                          n_issues, config.error_log),
+                                      file=sys.stderr)
                         if config.return_results:
                             results.append(result)
                     except Exception as e:
@@ -403,6 +515,20 @@ def run_recon(config: ReconConfig):
                 gnn_writer.close()
                 print("Wrote %d GNN records to %s" % (
                     n_processed, config.output_gnn), file=sys.stderr)
+            if err_writer is not None:
+                err_writer.close()
+                if err_writer.n_atoms_with_issues:
+                    print("Atom-typing quality report: %d atom(s) in %d "
+                          "molecule(s) had imperfect TAE matches "
+                          "(MatchLevel < 3) -> %s" % (
+                              err_writer.n_atoms_with_issues,
+                              err_writer.n_molecules_with_issues,
+                              config.error_log),
+                          file=sys.stderr)
+                else:
+                    print("Atom-typing quality: all atoms matched perfectly "
+                          "(MatchLevel 3) -> %s" % config.error_log,
+                          file=sys.stderr)
 
     finally:
         sys.stderr = original_stderr
@@ -434,4 +560,7 @@ def _process_molecule(mol, tae_index, config):
     desc['_natom'] = natom
     desc['_num_h'] = sum(1 for i in range(1, natom + 1) if nuc[i] == 1)
     desc['_hydrogens_added'] = mol.get('hydrogens_added', 0)
+    desc['_lev'] = lev
+    desc['_modtype'] = modtype
+    desc['_atomtype_list'] = atomtype_list
     return desc
