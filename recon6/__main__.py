@@ -34,10 +34,17 @@ def main():
     parser.add_argument('--log-file', default=None,
                         help='Redirect all notes, warnings and progress output to '
                              'this file instead of stderr (recommended for large batches)')
+    parser.add_argument('--error-log', default=None,
+                        help='Write atom-typing quality report to this CSV file. '
+                             'One row per atom with an imperfect TAE match (MatchLevel < 3), '
+                             'with columns: Molecule, AtomIndex, Element, AtomTypeCode, '
+                             'MatchLevel, BestTAEEntry, MatchQuality. '
+                             'Strongly recommended when building ML models to assess '
+                             'descriptor reliability across your dataset.')
     parser.add_argument('--no-return', action='store_true',
-                        help='Do not accumulate results in memory - stream-write CSV '
-                             'only and return nothing (recommended for large batches '
-                             'to keep memory bounded; incompatible with library use)')
+                        help='Do not accumulate results in memory - stream-write CSV/GNN '
+                             'output only and return nothing (recommended for large batches '
+                             'to keep memory bounded)')
     parser.add_argument('--no-add-h', action='store_true',
                         help='Disable automatic hydrogen addition for H-less '
                              'SDF/MOL2/PDB input (Gaussian/ORCA are never modified)')
@@ -63,6 +70,7 @@ def main():
         iovr=args.iovr,
         return_results=not args.no_return,
         log_file=args.log_file,
+        error_log=args.error_log,
     )
 
     results = run_recon(config)
