@@ -51,7 +51,8 @@ python -m recon6 --data-dir /path/to/DATA --fmt smiles smiles_list.txt -o result
 ### Other optional flags:
 - --gnn-output	# Outputs atom, bond and graph attributes for a Graph Neural Network;
 - --no-return	# Writes output a single molecule at a time (useful for large databases);
-- --log-file	# Produces silent run and logs messages instead (useful for large databases)
+- --log-file	# Produces silent run and logs messages instead (useful for large databases);
+- --error-log	# error logging of any missing atom types or poorly typed atoms. This is important information for the user, as it relates to the quality of atom typing and potential accuracy of ML models developed using these descriptors for a given dataset.
 
 The bond-length table is read automatically from `<data-dir>/bond`;
 pass `--bond-file` only if you need to override that location.
