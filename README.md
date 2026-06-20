@@ -5,7 +5,7 @@ This is a Python translation and upgrade of RECON5-5, a Fortran program (©Sukum
 
 Transferable Atom Equivalent Reconstruction (TAE-RECON) is a computational chemistry method that rapidly generates highly accurate quantum mechanical molecular descriptors. Originally developed by the late Prof. Curt Breneman's group at RPI, it drastically accelerates molecular modeling by assembling pre-computed atomic electron-density fragments, skipping time-consuming ab initio calculations.
 
-The core of the algorithm is the Atomtyper and TAE descriptor pipeline: reading a molecule, classifying each atom into a 49-character alphanumeric code, matching that code against the TAE database, and combining the matched atomic descriptors into whole-molecule descriptors. This release includes several features not present in earlier versions, and has been prepared with the help of Claude (Sonnet 4.6)
+The core of the algorithm is the Atomtyper and TAE descriptor pipeline: reading a molecule, classifying each atom into a 49-character alphanumeric code, based on its atomic number, number of bonded neighbours, atomic numbers of bonded neighbours, and size of ring, if any, matching that code against the TAE database, and combining the matched atomic descriptors into whole-molecule descriptors. This release includes several features not present in earlier versions, and has been prepared with the help of Claude (Sonnet 4.6)
 
 # How TAE-RECON Works
 - Fragment-Based: It uses Bader’s Quantum Theory of Atoms in Molecules (AIM) to create a library of atomic charge density fragments, whose properties are computed at quantum mechanical accuracy.
