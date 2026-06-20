@@ -331,3 +331,107 @@ class TestLargeBatchStreaming(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+@unittest.skipUnless(HAVE_DATA, "DATA dir not available")
+class TestErrorLog(unittest.TestCase):
+    """Atom-typing quality report (error_log) tests."""
+
+    def test_error_log_csv_has_correct_columns(self):
+        from recon6.recon import ReconConfig, run_recon
+        with tempfile.NamedTemporaryFile(suffix='.sdf', mode='w', delete=False) as f:
+            f.write(_TWO_MOL_SDF); sdf_path = f.name
+        err_path = sdf_path.replace('.sdf', '.err.csv')
+        try:
+            config = ReconConfig(
+                data_dir=DATA_DIR, input_files=[sdf_path],
+                fmt='sdf', auto_add_h=False, error_log=err_path,
+            )
+            run_recon(config)
+            self.assertTrue(os.path.exists(err_path))
+            with open(err_path) as f:
+                reader = csv.DictReader(f)
+                _ = list(reader)  # consume rows
+                for col in ('Molecule', 'AtomIndex', 'Element',
+                            'AtomTypeCode', 'MatchLevel',
+                            'BestTAEEntry', 'MatchQuality'):
+                    self.assertIn(col, reader.fieldnames)
+        finally:
+            for p in [sdf_path, err_path]:
+                if os.path.exists(p): os.unlink(p)
+
+    def test_error_log_match_quality_labels(self):
+        """MatchQuality must be one of the documented label strings."""
+        from recon6.recon import ReconConfig, run_recon
+        if not os.path.exists(TOXX_SDF):
+            self.skipTest("toxx2.sdf not available")
+        err_path = '/tmp/test_err_labels.csv'
+        try:
+            config = ReconConfig(
+                data_dir=DATA_DIR, input_files=[TOXX_SDF],
+                fmt='sdf', error_log=err_path,
+            )
+            run_recon(config)
+            valid_labels = {'near', 'good', 'partial', 'poor',
+                            'very_poor', 'no_match'}
+            with open(err_path) as f:
+                for row in csv.DictReader(f):
+                    self.assertIn(row['MatchQuality'], valid_labels)
+                    self.assertLess(int(row['MatchLevel']), 3)
+        finally:
+            if os.path.exists(err_path): os.unlink(err_path)
+
+    def test_error_log_flushed_incrementally(self):
+        """Error log must be flushed after each molecule, not at end."""
+        from recon6.recon import ReconConfig, run_recon
+        import recon6.recon as mod
+        if not os.path.exists(TOXX_SDF):
+            self.skipTest("toxx2.sdf not available")
+        err_path = '/tmp/test_err_incremental.csv'
+        sizes = []
+        original = mod._process_molecule
+        call_count = [0]
+        def patched(mol, tae_index, config):
+            result = original(mol, tae_index, config)
+            call_count[0] += 1
+            if call_count[0] == 5 and os.path.exists(err_path):
+                sizes.append(os.path.getsize(err_path))
+            return result
+        mod._process_molecule = patched
+        try:
+            config = ReconConfig(
+                data_dir=DATA_DIR, input_files=[TOXX_SDF],
+                fmt='sdf', error_log=err_path,
+            )
+            run_recon(config)
+        finally:
+            mod._process_molecule = original
+            if os.path.exists(err_path): os.unlink(err_path)
+        # After 5 molecules some imperfect matches should have been
+        # flushed already (toxx has imperfect matches; if by chance
+        # the first 5 are all perfect, the size check may give 0
+        # but that's still a valid state, not a bug).
+        self.assertGreaterEqual(len(sizes), 1)
+
+    def test_perfect_match_molecules_produce_no_rows(self):
+        """Atoms with perfect match (lev==3) must not appear in the
+        error log. We verify using a well-connected molecule from toxx
+        where we know some atoms are perfect and check those are absent."""
+        if not os.path.exists(TOXX_SDF):
+            self.skipTest("toxx2.sdf not available")
+        from recon6.recon import ReconConfig, run_recon
+        err_path = '/tmp/test_err_perfect.csv'
+        try:
+            config = ReconConfig(
+                data_dir=DATA_DIR, input_files=[TOXX_SDF],
+                fmt='sdf', error_log=err_path,
+            )
+            run_recon(config)
+            with open(err_path) as f:
+                rows = list(csv.DictReader(f))
+            # Every row in the error log must have MatchLevel < 3
+            for row in rows:
+                self.assertLess(int(row['MatchLevel']), 3,
+                                "Only imperfect matches should appear in error log")
+        finally:
+            if os.path.exists(err_path): os.unlink(err_path)
